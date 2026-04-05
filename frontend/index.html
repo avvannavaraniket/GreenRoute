@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="sw-api-port" content="5000" />
+    <title>Smart Waste Optimizer · City Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+    <div class="app">
+      <aside class="panel glass-panel">
+        <header class="panel__header">
+          <div class="brand">
+            <span class="brand__icon" aria-hidden="true">◉</span>
+            <div>
+              <h1>Smart Waste Optimizer</h1>
+              <p class="panel__tagline">Bangalore · live fleet intelligence</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="tabs" role="tablist">
+          <button type="button" class="tabs__btn is-active" data-tab="live" role="tab" aria-selected="true">
+            Live Map
+          </button>
+          <button type="button" class="tabs__btn" data-tab="analytics" role="tab" aria-selected="false">
+            Analytics
+          </button>
+        </div>
+
+        <div id="panel-loading" class="panel-loading" hidden>
+          <span class="panel-loading__dot"></span>
+          Syncing bins…
+        </div>
+
+        <div class="tab-panel" id="tab-live" role="tabpanel">
+          <section class="glass-card control-section">
+            <h2 class="section-title">📍 Truck start</h2>
+            <p class="section-hint">Drag the truck on the map, enter coordinates, or pick on map.</p>
+            <div class="coord-grid">
+              <label class="field">
+                <span>Latitude</span>
+                <input type="number" id="input-lat" step="0.0001" />
+              </label>
+              <label class="field">
+                <span>Longitude</span>
+                <input type="number" id="input-lng" step="0.0001" />
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn-secondary" id="btn-apply-coords">Apply coordinates</button>
+              <button type="button" class="btn-secondary btn-secondary--accent" id="btn-map-pick">
+                Set start on map
+              </button>
+            </div>
+            <button type="button" class="btn-secondary btn-full" id="btn-report-garbage" style="margin-top: 0.5rem; background: rgba(248,113,113,0.15); border-color: rgba(248,113,113,0.4); color: var(--danger);">
+              🚨 Report Garbage
+            </button>
+          </section>
+
+          <section class="glass-card control-section">
+            <h2 class="section-title">🎯 Pickup threshold</h2>
+            <div class="slider-row">
+              <label for="slider-min-fill">Minimum fill for route (%)</label>
+              <span class="slider-value" id="slider-min-fill-val">80</span>
+            </div>
+            <input type="range" id="slider-min-fill" min="0" max="100" value="80" />
+          </section>
+
+          <section class="glass-card control-section">
+            <h2 class="section-title">🔢 Fleet & Sim</h2>
+            <div class="coord-grid">
+              <label class="field">
+                <span>Bins to load</span>
+                <select id="select-bin-count">
+                  <option value="10">10 bins</option>
+                  <option value="20">20 bins</option>
+                  <option value="30" selected>30 bins</option>
+                  <option value="50">50 bins</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Trucks</span>
+                <select id="select-truck-count">
+                  <option value="1" selected>1 Truck</option>
+                  <option value="2">2 Trucks</option>
+                </select>
+              </label>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn-secondary" id="btn-refresh-bins">
+                🔄 Refresh
+              </button>
+              <button type="button" class="btn-secondary btn-secondary--accent" id="btn-simulate" title="Simulate time passage">
+                ⏱ Simulate
+              </button>
+            </div>
+          </section>
+
+          <section class="glass-card" id="alerts-panel" style="margin-bottom: 0.65rem;" hidden>
+            <h2 class="section-title" style="color: var(--danger);">⚠️ High Risk Bins</h2>
+            <div id="alerts-list" class="alerts-list">
+              <!-- Dynamically populated -->
+            </div>
+          </section>
+
+          <section class="glass-card stats-grid">
+            <div class="stat-chip">
+              <span class="stat-chip__label">Total bins</span>
+              <span class="stat-chip__value" id="stat-total" data-target="0">0</span>
+            </div>
+            <div class="stat-chip stat-chip--warn">
+              <span class="stat-chip__label">Pickup queue</span>
+              <span class="stat-chip__value" id="stat-priority" data-target="0">0</span>
+            </div>
+            <div class="stat-chip stat-chip--purple">
+              <span class="stat-chip__label">Overflow risk</span>
+              <span class="stat-chip__value" id="stat-overflow" data-target="0">0</span>
+            </div>
+          </section>
+
+          <section class="glass-card card--metrics">
+            <h2 class="section-title section-title--tight">Route impact & Savings</h2>
+            <ul class="metrics-list">
+              <li>
+                <span>Road distance</span>
+                <strong id="metric-distance"><span class="num" data-decimals="3">0</span> km</strong>
+              </li>
+              <li class="metric-savings" id="savings-distance" hidden>
+                <span>vs Baseline</span>
+                <strong><span class="num">0</span> km saved</strong>
+              </li>
+              <li>
+                <span>Fuel</span>
+                <strong id="metric-fuel"><span class="num" data-decimals="3">0</span> L</strong>
+              </li>
+              <li class="metric-savings" id="savings-fuel" hidden>
+                <span>vs Baseline</span>
+                <strong><span class="num">0</span> L saved</strong>
+              </li>
+              <li>
+                <span>CO₂</span>
+                <strong id="metric-co2"><span class="num" data-decimals="3">0</span> kg</strong>
+              </li>
+              <li class="metric-savings" id="savings-co2" hidden>
+                <span>vs Baseline</span>
+                <strong><span class="num">0</span> kg saved</strong>
+              </li>
+            </ul>
+          </section>
+
+          <button type="button" class="btn-primary" id="btn-optimize" disabled>
+            <span class="btn-primary__text">🚛 Optimize route</span>
+            <span class="btn-primary__spinner" hidden></span>
+          </button>
+          <p class="panel__note" id="route-status"></p>
+
+          <footer class="legend glass-card legend--compact">
+            <span class="legend__title">Legend</span>
+            <div class="legend__items">
+              <span><i class="dot dot--green"></i> Low</span>
+              <span><i class="dot dot--yellow"></i> Medium</span>
+              <span><i class="dot dot--red"></i> High</span>
+              <span><i class="dot dot--purple"></i> Pred. overflow</span>
+              <span><i class="dot dot--cyan"></i> On route</span>
+            </div>
+          </footer>
+        </div>
+
+        <div class="tab-panel is-hidden" id="tab-analytics" role="tabpanel" hidden>
+          <section class="glass-card chart-card">
+            <h2 class="section-title">Bins by fill band</h2>
+            <div class="chart-wrap">
+              <canvas id="chart-bar" height="200"></canvas>
+            </div>
+          </section>
+          <section class="glass-card chart-card">
+            <h2 class="section-title">Priority mix</h2>
+            <div class="chart-wrap chart-wrap--pie">
+              <canvas id="chart-pie" height="220"></canvas>
+            </div>
+          </section>
+          <p class="analytics-hint">Charts update when you refresh bin data or load the dashboard.</p>
+        </div>
+      </aside>
+
+      <main class="map-wrap" id="map-wrap">
+        <div id="map-loading" class="map-loading" hidden>
+          <div class="map-loading__inner glass-card">
+            <div class="map-loading__spinner" aria-hidden="true"></div>
+            <p>Loading bin telemetry…</p>
+          </div>
+        </div>
+        <div id="route-loading" class="route-loading" hidden>
+          <div class="route-loading__spinner" aria-hidden="true"></div>
+          <span>Computing road route…</span>
+        </div>
+        <div id="map" class="map-canvas"></div>
+      </main>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div id="report-modal" class="modal-overlay" hidden>
+      <div class="modal-box glass-card">
+        <header class="modal-header">
+          <h2>Report Garbage</h2>
+          <button type="button" class="modal-close" id="btn-close-modal">✕</button>
+        </header>
+        <div class="modal-body">
+          <p class="section-hint">Take a photo or describe the overflow location so our AI can prioritize it.</p>
+          <div class="photo-placeholder">
+            <span>📷 Tap to attach photo</span>
+          </div>
+          <label class="field field--full" style="margin-top: 0.75rem;">
+            <span>Description</span>
+            <textarea id="report-text" rows="3" placeholder="E.g., Bin overflowing onto the sidewalk..."></textarea>
+          </label>
+          <button type="button" class="btn-primary" id="btn-submit-report">Submit Report</button>
+        </div>
+      </div>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
